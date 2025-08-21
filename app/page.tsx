@@ -1,284 +1,260 @@
-// Place this code in app/page.tsx in your Next.js project
 "use client";
-
+import { InputForm } from "@/components/input-process";
 import { useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { unique } from "next/dist/build/utils";
+import { GanttChart } from "@/components/gantt-chart";
 
-// Define the structure for a Process
-interface Process {
-  id: string;
+interface Processes {
+  id: number;
   name: string;
-  arrivalTime: number;
   burstTime: number;
+  arrivalTime: number;
+  waitingTime?: number;
+  turnAroundTime?: number;
 }
 
-// Define the structure for the calculated results of a Process
-interface ProcessResult extends Process {
-  completionTime: number;
-  turnaroundTime: number;
-  waitingTime: number;
-}
+export default function Home() {
+  const [numberOfProcesses, setNumberOfProcesses] = useState<number | null>(
+    null
+  );
+  const [processes, setProcesses] = useState<Processes[]>([]);
+  const [waitingTime, setWaitingTime] = useState<number | null>(null);
+  const [averageWaitingTime, setAverageWaitingTime] = useState<number | null>(
+    null
+  );
+  const [turnAroundTime, setTurnAroundTime] = useState<number | null>(null);
+  const [averageTurnAroundTime, setAverageTurnAroundTime] = useState<
+    number | null
+  >(null);
 
-export default function FCFSSchedulerPage() {
-  const [numProcesses, setNumProcesses] = useState<number | string>("");
-  const [processes, setProcesses] = useState<Process[]>([]);
-  const [results, setResults] = useState<ProcessResult[]>([]);
-  const [avgWaitingTime, setAvgWaitingTime] = useState<number>(0);
-  const [avgTurnaroundTime, setAvgTurnaroundTime] = useState<number>(0);
-  const [error, setError] = useState<string>("");
-  const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
-
-  // Handle setting the number of processes
-  const handleSetNumProcesses = () => {
-    const n = Number(numProcesses);
-    if (isNaN(n) || n < 3 || n > 10) {
-      setError("Please enter a valid number of processes (3-10).");
-      return;
-    }
-    setError("");
-    const newProcesses: Process[] = Array.from({ length: n }, (_, i) => ({
-      id: `p${i}`,
-      name: `P${i + 1}`,
-      arrivalTime: 0,
-      burstTime: 0,
-    }));
-    setProcesses(newProcesses);
-    setIsSubmitted(true);
-    setResults([]); // Clear previous results
-  };
-
-  // Handle input changes for individual processes
-  const handleProcessChange = (
-    index: number,
-    field: keyof Process,
-    value: string
-  ) => {
-    const updatedProcesses = [...processes];
-    if (field === "arrivalTime" || field === "burstTime") {
-      updatedProcesses[index][field] = Number(value);
-    } else if (field === "name") {
-      updatedProcesses[index][field] = value;
-    }
-    setProcesses(updatedProcesses);
-  };
-
-  // FCFS Scheduling Algorithm Logic
-  const calculateFCFS = () => {
-    // Validation
-    for (const p of processes) {
-      if (isNaN(p.arrivalTime) || isNaN(p.burstTime) || p.burstTime <= 0) {
-        setError(
-          "Please enter valid, positive numbers for all Arrival and Burst Times."
-        );
-        return;
-      }
-      if (p.name.trim() === "") {
-        setError("Process ID cannot be empty.");
-        return;
-      }
-    }
-    setError("");
-
-    // Sort processes by arrival time (the core of FCFS)
-    const sortedProcesses = [...processes].sort(
-      (a, b) => a.arrivalTime - b.arrivalTime
+  // when user sets number of processes, initialize the processes array
+  function handleSetNumber(num: number) {
+    setNumberOfProcesses(num);
+    setProcesses(
+      Array.from({ length: num }, (_, i) => ({
+        id: i + 1,
+        name: "",
+        burstTime: 0,
+        arrivalTime: 0,
+      }))
     );
+    setAverageWaitingTime(null);
+  }
 
-    const calculatedResults: ProcessResult[] = [];
+  // update a single field of a process
+  function handleProcessChange(
+    index: number,
+    field: keyof Processes,
+    value: string | number
+  ) {
+    const updated = [...processes];
+    updated[index] = {
+      ...updated[index],
+      [field]: field === "name" ? value : Number(value),
+    };
+    setProcesses(updated);
+  }
+
+  function handleReset() {
+    setNumberOfProcesses(null);
+    setProcesses([]);
+    setWaitingTime(null);
+    setAverageWaitingTime(null);
+    setTurnAroundTime(null);
+    setAverageTurnAroundTime(null);
+  }
+
+  function handleSubmitAll() {
+    // Validation: all fields required
+
+    for (const p of processes) {
+      if (!p.name || p.arrivalTime < 0 || p.burstTime <= 0) {
+        toast("⚠️ Please fill in all fields correctly for every process!");
+        return;
+      }
+
+      const names = processes.map((p) => p.name.trim().toLowerCase());
+      const uniqueNames = new Set(names);
+
+      if (uniqueNames.size !== names.length) {
+        toast("⚠️ Process names must be unique!");
+        return;
+      }
+    }
+    calculateWaitingTimesAndTAT();
+  }
+
+  function calculateWaitingTimesAndTAT() {
     let currentTime = 0;
-    let totalWaitingTime = 0;
-    let totalTurnaroundTime = 0;
+    let totalWaiting = 0;
+    let totalTurnAround = 0;
 
-    sortedProcesses.forEach((process) => {
-      // If the CPU is idle until the process arrives, move time forward
+    // Sort processes by arrival time (FCFS order)
+    const sorted = [...processes].sort((a, b) => a.arrivalTime - b.arrivalTime);
+
+    const updated = sorted.map((process) => {
       if (currentTime < process.arrivalTime) {
-        currentTime = process.arrivalTime;
+        currentTime = process.arrivalTime; // CPU idle until process arrives
       }
 
       const waitingTime = currentTime - process.arrivalTime;
-      const completionTime = currentTime + process.burstTime;
-      const turnaroundTime = completionTime - process.arrivalTime;
+      const turnAroundTime = waitingTime + process.burstTime;
 
-      calculatedResults.push({
-        ...process,
-        completionTime,
-        turnaroundTime,
-        waitingTime,
-      });
+      totalWaiting += waitingTime;
+      totalTurnAround += turnAroundTime;
 
-      totalWaitingTime += waitingTime;
-      totalTurnaroundTime += turnaroundTime;
+      currentTime += process.burstTime; // move time forward
 
-      // The next process will start after the current one finishes
-      currentTime = completionTime;
+      return { ...process, waitingTime, turnAroundTime };
     });
 
-    setResults(calculatedResults);
-    setAvgWaitingTime(totalWaitingTime / processes.length);
-    setAvgTurnaroundTime(totalTurnaroundTime / processes.length);
-  };
-
-  // Reset function to start over
-  const handleReset = () => {
-    setNumProcesses("");
-    setProcesses([]);
-    setResults([]);
-    setAvgWaitingTime(0);
-    setAvgTurnaroundTime(0);
-    setError("");
-    setIsSubmitted(false);
-  };
+    setProcesses(updated);
+    setAverageWaitingTime(totalWaiting / updated.length);
+    setWaitingTime(totalWaiting);
+    setAverageTurnAroundTime(totalTurnAround / updated.length);
+    setTurnAroundTime(totalTurnAround);
+  }
 
   return (
-    <div className="bg-slate-900 text-white min-h-screen p-4 sm:p-8 flex flex-col items-center">
-      <div className="w-full max-w-4xl">
-        <header className="text-center mb-8">
-          <h1 className="text-4xl sm:text-5xl font-bold text-cyan-400">
-            FCFS CPU Scheduler
-          </h1>
-          <p className="text-slate-400 mt-2">
-            A Non-Preemptive Scheduling Algorithm Simulator
-          </p>
-        </header>
+    <div className="min-h-screen max-w-7xl mx-auto px-4 py-8">
+      <div className="text-center">
+        <h1 className="scroll-m-20 text-center text-4xl font-extrabold tracking-tight text-balance">
+          First Come First Serve Algorithm
+        </h1>
+        <p className="leading-7 [&:not(:first-child)]:mt-6">
+          A Non-Preemptive Scheduling Algorithm Simulator
+        </p>
+      </div>
 
-        <main className="bg-slate-800 p-6 rounded-lg shadow-xl">
-          {!isSubmitted ? (
-            <div className="flex flex-col items-center">
-              <label htmlFor="numProcesses" className="text-lg mb-2">
-                Enter the number of processes (3-10):
-              </label>
-              <input
-                type="number"
-                id="numProcesses"
-                value={numProcesses}
-                onChange={(e) => setNumProcesses(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && handleSetNumProcesses()}
-                className="bg-slate-700 p-2 rounded w-48 text-center"
-                min="3"
-                max="10"
-              />
-              <button
-                onClick={handleSetNumProcesses}
-                className="mt-4 bg-cyan-500 hover:bg-cyan-600 font-bold py-2 px-6 rounded transition-colors"
-              >
-                Set
-              </button>
+      <GanttChart processes={processes} />
+
+      <div className="p-8">
+        <InputForm onSubmit={handleSetNumber} />
+
+        {numberOfProcesses && (
+          <div>
+            <div className="grid grid-cols-4 gap-4 items-center mt-8 font-semibold text-lg">
+              <span>Process Name</span>
+              <span>Arrival Time</span>
+              <span>Burst Time</span>
+              <span>ID</span>
             </div>
-          ) : (
-            <div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="font-bold text-center p-2 rounded-md bg-slate-700">
-                  Process ID
-                </div>
-                <div className="font-bold text-center p-2 rounded-md bg-slate-700">
-                  Arrival Time
-                </div>
-                <div className="font-bold text-center p-2 rounded-md bg-slate-700">
-                  Burst Time
-                </div>
-              </div>
-
-              {processes.map((p, index) => (
+            <div className="mt-4 space-y-4">
+              {processes.map((process, index) => (
                 <div
-                  key={p.id}
-                  className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3 items-center"
+                  key={process.id}
+                  className="grid grid-cols-4 gap-4 items-center border p-4 rounded-lg shadow-sm"
                 >
-                  <input
-                    type="text"
-                    value={p.name}
+                  <Input
+                    placeholder="Name"
+                    required
+                    value={process.name}
                     onChange={(e) =>
                       handleProcessChange(index, "name", e.target.value)
                     }
-                    className="bg-slate-700 p-2 rounded text-center"
                   />
-                  <input
+                  <Input
                     type="number"
-                    value={p.arrivalTime}
+                    required
+                    placeholder="Arrival Time"
+                    value={process.arrivalTime}
                     onChange={(e) =>
                       handleProcessChange(index, "arrivalTime", e.target.value)
                     }
-                    className="bg-slate-700 p-2 rounded text-center"
                   />
-                  <input
+                  <Input
                     type="number"
-                    value={p.burstTime}
+                    required
+                    placeholder="Burst Time"
+                    value={process.burstTime}
                     onChange={(e) =>
                       handleProcessChange(index, "burstTime", e.target.value)
                     }
-                    className="bg-slate-700 p-2 rounded text-center"
-                    min="1"
                   />
+                  <span className="text-slate-500">P{process.id}</span>
                 </div>
               ))}
-              <div className="flex justify-center space-x-4 mt-6">
-                <button
-                  onClick={calculateFCFS}
-                  className="bg-green-500 hover:bg-green-600 font-bold py-2 px-8 rounded transition-colors"
-                >
-                  Calculate
-                </button>
-                <button
+
+              <div className="flex gap-5">
+                <Button onClick={handleSubmitAll} className="mt-4 ">
+                  🚀 Submit Processes
+                </Button>
+                <Button
                   onClick={handleReset}
-                  className="bg-red-500 hover:bg-red-600 font-bold py-2 px-8 rounded transition-colors"
+                  variant="destructive"
+                  className="mt-4 "
                 >
                   Reset
-                </button>
+                </Button>
               </div>
             </div>
-          )}
-
-          {error && <p className="text-red-400 mt-4 text-center">{error}</p>}
-
-          {results.length > 0 && (
-            <div className="mt-8">
-              <h2 className="text-3xl font-bold text-cyan-400 text-center mb-4">
-                Results
-              </h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-center">
-                  <thead className="bg-slate-700">
-                    <tr>
-                      <th className="p-3">Process ID</th>
-                      <th className="p-3">Arrival Time</th>
-                      <th className="p-3">Burst Time</th>
-                      <th className="p-3">Waiting Time</th>
-                      <th className="p-3">Turnaround Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.map((r) => (
-                      <tr
-                        key={r.id}
-                        className="bg-slate-800 border-b border-slate-700"
-                      >
-                        <td className="p-3">{r.name}</td>
-                        <td className="p-3">{r.arrivalTime}</td>
-                        <td className="p-3">{r.burstTime}</td>
-                        <td className="p-3">{r.waitingTime}</td>
-                        <td className="p-3">{r.turnaroundTime}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-6 flex flex-col md:flex-row justify-center items-center text-center gap-4 md:gap-8">
-                <div className="bg-slate-700 p-4 rounded-lg">
-                  <h3 className="text-lg font-bold">Average Waiting Time</h3>
-                  <p className="text-2xl text-cyan-400">
-                    {avgWaitingTime.toFixed(2)}
-                  </p>
-                </div>
-                <div className="bg-slate-700 p-4 rounded-lg">
-                  <h3 className="text-lg font-bold">Average Turnaround Time</h3>
-                  <p className="text-2xl text-cyan-400">
-                    {avgTurnaroundTime.toFixed(2)}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </main>
+          </div>
+        )}
       </div>
+
+      {waitingTime !== null && turnAroundTime !== null && (
+        <div className="mt-12">
+          <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0">
+            Results
+          </h2>
+
+          {/* Table for results */}
+          <div className="overflow-x-auto mt-6">
+            <table className="min-w-full border border-slate-200 text-center">
+              <thead className="bg-slate-100">
+                <tr>
+                  <th className="px-4 py-2 border">Process</th>
+                  <th className="px-4 py-2 border">Arrival</th>
+                  <th className="px-4 py-2 border">Burst</th>
+                  <th className="px-4 py-2 border">Waiting</th>
+                  <th className="px-4 py-2 border">Turnaround</th>
+                </tr>
+              </thead>
+              <tbody>
+                {processes.map((p) => (
+                  <tr key={p.id}>
+                    <td className="px-4 py-2 border font-medium">{p.name}</td>
+                    <td className="px-4 py-2 border">{p.arrivalTime}</td>
+                    <td className="px-4 py-2 border">{p.burstTime}</td>
+                    <td className="px-4 py-2 border">{p.waitingTime}</td>
+                    <td className="px-4 py-2 border">{p.turnAroundTime}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Totals and averages */}
+          <div className="mt-6 grid grid-cols-2 gap-4">
+            <div className="p-4 border rounded-lg shadow bg-slate-50 text-center">
+              <h3 className="text-lg font-semibold">Total Waiting Time</h3>
+              <p className="text-xl font-bold">{waitingTime}</p>
+              <p className="text-sm text-slate-500">
+                Average: {averageWaitingTime?.toFixed(2)}
+              </p>
+            </div>
+            <div className="p-4 border rounded-lg shadow bg-slate-50 text-center">
+              <h3 className="text-lg font-semibold">Total Turnaround Time</h3>
+              <p className="text-xl font-bold">{turnAroundTime}</p>
+              <p className="text-sm text-slate-500">
+                Average: {averageTurnAroundTime?.toFixed(2)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <footer className="mt-6">
+        <blockquote className="text-muted-foreground text-sm">
+          Made by{" "}
+          <span className="bg-muted relative rounded px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold">
+            Nhat Vu Le
+          </span>
+        </blockquote>
+      </footer>
     </div>
   );
 }
