@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { unique } from "next/dist/build/utils";
 import { GanttChart } from "@/components/gantt-chart";
 
 interface Processes {
@@ -15,6 +14,8 @@ interface Processes {
   waitingTime?: number;
   turnAroundTime?: number;
 }
+
+type Algorithm = "FCFS" | "SJF";
 
 export default function Home() {
   const [numberOfProcesses, setNumberOfProcesses] = useState<number | null>(
@@ -29,6 +30,10 @@ export default function Home() {
   const [averageTurnAroundTime, setAverageTurnAroundTime] = useState<
     number | null
   >(null);
+  const [algorithm, setAlgorithm] = useState<Algorithm>("FCFS");
+  const [timeline, setTimeline] = useState<
+    { label: string; start: number; end: number }[]
+  >([]);
 
   // when user sets number of processes, initialize the processes array
   function handleSetNumber(num: number) {
@@ -65,71 +70,141 @@ export default function Home() {
     setAverageWaitingTime(null);
     setTurnAroundTime(null);
     setAverageTurnAroundTime(null);
+    setTimeline([]);
   }
 
   function handleSubmitAll() {
-    // Validation: all fields required
-
+    // Validation
     for (const p of processes) {
       if (!p.name || p.arrivalTime < 0 || p.burstTime <= 0) {
         toast("⚠️ Please fill in all fields correctly for every process!");
         return;
       }
-
-      const names = processes.map((p) => p.name.trim().toLowerCase());
-      const uniqueNames = new Set(names);
-
-      if (uniqueNames.size !== names.length) {
-        toast("⚠️ Process names must be unique!");
-        return;
-      }
     }
-    calculateWaitingTimesAndTAT();
+
+    const names = processes.map((p) => p.name.trim().toLowerCase());
+    if (new Set(names).size !== names.length) {
+      toast("⚠️ Process names must be unique!");
+      return;
+    }
+
+    if (algorithm === "FCFS") {
+      calculateFCFS();
+    } else if (algorithm === "SJF") {
+      calculateSJF();
+    }
   }
 
-  function calculateWaitingTimesAndTAT() {
+  function calculateFCFS() {
+    let timelineArr: { label: string; start: number; end: number }[] = [];
+
     let currentTime = 0;
     let totalWaiting = 0;
     let totalTurnAround = 0;
 
-    // Sort processes by arrival time (FCFS order)
     const sorted = [...processes].sort((a, b) => a.arrivalTime - b.arrivalTime);
 
     const updated = sorted.map((process) => {
-      if (currentTime < process.arrivalTime) {
-        currentTime = process.arrivalTime; // CPU idle until process arrives
-      }
+      if (currentTime < process.arrivalTime) currentTime = process.arrivalTime;
 
       const waitingTime = currentTime - process.arrivalTime;
       const turnAroundTime = waitingTime + process.burstTime;
 
+      timelineArr.push({
+        label: process.name,
+        start: currentTime,
+        end: currentTime + process.burstTime,
+      });
+
       totalWaiting += waitingTime;
       totalTurnAround += turnAroundTime;
-
-      currentTime += process.burstTime; // move time forward
+      currentTime += process.burstTime;
 
       return { ...process, waitingTime, turnAroundTime };
     });
 
     setProcesses(updated);
-    setAverageWaitingTime(totalWaiting / updated.length);
     setWaitingTime(totalWaiting);
-    setAverageTurnAroundTime(totalTurnAround / updated.length);
+    setAverageWaitingTime(totalWaiting / updated.length);
     setTurnAroundTime(totalTurnAround);
+    setAverageTurnAroundTime(totalTurnAround / updated.length);
+    setTimeline(timelineArr);
+  }
+
+  function calculateSJF() {
+    let currentTime = 0;
+    let completed: Processes[] = [];
+    let readyQueue: Processes[] = [...processes].sort(
+      (a, b) => a.arrivalTime - b.arrivalTime
+    );
+    let totalWaiting = 0;
+    let totalTurnAround = 0;
+    let timelineArr: { label: string; start: number; end: number }[] = [];
+
+    while (readyQueue.length > 0) {
+      const available = readyQueue.filter((p) => p.arrivalTime <= currentTime);
+
+      if (available.length === 0) {
+        currentTime = readyQueue[0].arrivalTime;
+        continue;
+      }
+
+      const nextProcess = available.reduce((prev, curr) =>
+        curr.burstTime < prev.burstTime ? curr : prev
+      );
+
+      readyQueue = readyQueue.filter((p) => p.id !== nextProcess.id);
+
+      const waitingTime = currentTime - nextProcess.arrivalTime;
+      const turnAroundTime = waitingTime + nextProcess.burstTime;
+
+      timelineArr.push({
+        label: nextProcess.name,
+        start: currentTime,
+        end: currentTime + nextProcess.burstTime,
+      });
+
+      totalWaiting += waitingTime;
+      totalTurnAround += turnAroundTime;
+      currentTime += nextProcess.burstTime;
+
+      completed.push({ ...nextProcess, waitingTime, turnAroundTime });
+    }
+
+    setProcesses(completed);
+    setWaitingTime(totalWaiting);
+    setAverageWaitingTime(totalWaiting / completed.length);
+    setTurnAroundTime(totalTurnAround);
+    setAverageTurnAroundTime(totalTurnAround / completed.length);
+    setTimeline(timelineArr);
   }
 
   return (
     <div className="min-h-screen max-w-7xl mx-auto px-4 py-8">
       <div className="text-center">
-        <h1 className="scroll-m-20 text-center text-4xl font-extrabold tracking-tight text-balance">
-          First Come First Serve Algorithm
+        <h1 className="text-4xl font-extrabold tracking-tight">
+          Scheduling Algorithm Simulator
         </h1>
-        <p className="leading-7 [&:not(:first-child)]:mt-6">
+        <p className="mt-2 text-lg">
           A Non-Preemptive Scheduling Algorithm Simulator
         </p>
       </div>
 
-      <GanttChart processes={processes} />
+      <div className="mt-6 flex justify-center gap-4">
+        <label className="flex items-center gap-2">
+          <span className="font-medium">Algorithm:</span>
+          <select
+            value={algorithm}
+            onChange={(e) => setAlgorithm(e.target.value as Algorithm)}
+            className="border rounded p-2"
+          >
+            <option value="FCFS">FCFS</option>
+            <option value="SJF">SJF </option>
+          </select>
+        </label>
+      </div>
+
+      <GanttChart timeline={timeline} />
 
       <div className="p-8">
         <InputForm onSubmit={handleSetNumber} />
@@ -179,13 +254,13 @@ export default function Home() {
               ))}
 
               <div className="flex gap-5">
-                <Button onClick={handleSubmitAll} className="mt-4 ">
+                <Button onClick={handleSubmitAll} className="mt-4">
                   🚀 Submit Processes
                 </Button>
                 <Button
                   onClick={handleReset}
                   variant="destructive"
-                  className="mt-4 "
+                  className="mt-4"
                 >
                   Reset
                 </Button>
@@ -197,11 +272,8 @@ export default function Home() {
 
       {waitingTime !== null && turnAroundTime !== null && (
         <div className="mt-12">
-          <h2 className="scroll-m-20 border-b pb-2 text-3xl font-semibold tracking-tight first:mt-0">
-            Results
-          </h2>
+          <h2 className="text-3xl font-semibold border-b pb-2">Results</h2>
 
-          {/* Table for results */}
           <div className="overflow-x-auto mt-6">
             <table className="min-w-full border border-slate-200 text-center">
               <thead className="bg-slate-100">
@@ -227,7 +299,6 @@ export default function Home() {
             </table>
           </div>
 
-          {/* Totals and averages */}
           <div className="mt-6 grid grid-cols-2 gap-4">
             <div className="p-4 border rounded-lg shadow bg-slate-50 text-center">
               <h3 className="text-lg font-semibold">Total Waiting Time</h3>
@@ -250,7 +321,7 @@ export default function Home() {
       <footer className="mt-6">
         <blockquote className="text-muted-foreground text-sm">
           Made by{" "}
-          <span className="bg-muted relative rounded px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold">
+          <span className="bg-muted rounded px-1 py-0.5 font-mono text-sm font-semibold">
             Nhat Vu Le
           </span>
         </blockquote>

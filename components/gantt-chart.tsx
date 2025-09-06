@@ -1,43 +1,20 @@
 import { Card, CardContent } from "@/components/ui/card";
 
-interface GanttChartProps {
-  processes: {
-    name: string;
-    arrivalTime: number;
-    burstTime: number;
-    waitingTime?: number;
-    turnAroundTime?: number;
-  }[];
+interface TimelineBlock {
+  label: string;
+  start: number;
+  end: number;
 }
 
-export function GanttChart({ processes }: GanttChartProps) {
-  if (!processes.length) return null;
+interface GanttChartProps {
+  timeline: TimelineBlock[];
+}
 
-  // Build timeline based on processes
-  let currentTime = 0;
-  const timeline: { label: string; start: number; end: number }[] = [];
-
-  processes.forEach((p) => {
-    if (currentTime < p.arrivalTime) {
-      // CPU idle block
-      timeline.push({
-        label: "Idle",
-        start: currentTime,
-        end: p.arrivalTime,
-      });
-      currentTime = p.arrivalTime;
-    }
-    timeline.push({
-      label: p.name || `P?`,
-      start: currentTime,
-      end: currentTime + p.burstTime,
-    });
-    currentTime += p.burstTime;
-  });
+export function GanttChart({ timeline }: GanttChartProps) {
+  if (!timeline.length) return null;
 
   const totalTime = timeline[timeline.length - 1].end;
 
-  // Tailwind color palette (HSL-based utility classes)
   const colors = [
     "bg-green-400",
     "bg-emerald-400",
