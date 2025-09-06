@@ -96,7 +96,7 @@ export default function Home() {
   }
 
   function calculateFCFS() {
-    let timelineArr: { label: string; start: number; end: number }[] = [];
+    const timelineArr: { label: string; start: number; end: number }[] = [];
 
     let currentTime = 0;
     let totalWaiting = 0;
@@ -133,13 +133,13 @@ export default function Home() {
 
   function calculateSJF() {
     let currentTime = 0;
-    let completed: Processes[] = [];
+    const completed: Processes[] = [];
     let readyQueue: Processes[] = [...processes].sort(
       (a, b) => a.arrivalTime - b.arrivalTime
     );
     let totalWaiting = 0;
     let totalTurnAround = 0;
-    let timelineArr: { label: string; start: number; end: number }[] = [];
+    const timelineArr: { label: string; start: number; end: number }[] = [];
 
     while (readyQueue.length > 0) {
       const available = readyQueue.filter((p) => p.arrivalTime <= currentTime);
