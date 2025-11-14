@@ -243,7 +243,11 @@ export default function Home() {
                         placeholder="Arrival Time"
                         value={process.arrivalTime}
                         onChange={(e) =>
-                          handleProcessChange(index, "arrivalTime", e.target.value)
+                          handleProcessChange(
+                            index,
+                            "arrivalTime",
+                            e.target.value
+                          )
                         }
                       />
                       <Input
@@ -252,7 +256,11 @@ export default function Home() {
                         placeholder="Burst Time"
                         value={process.burstTime}
                         onChange={(e) =>
-                          handleProcessChange(index, "burstTime", e.target.value)
+                          handleProcessChange(
+                            index,
+                            "burstTime",
+                            e.target.value
+                          )
                         }
                       />
                       <span className="text-slate-500">P{process.id}</span>
@@ -294,7 +302,9 @@ export default function Home() {
                   <tbody>
                     {processes.map((p) => (
                       <tr key={p.id}>
-                        <td className="px-4 py-2 border font-medium">{p.name}</td>
+                        <td className="px-4 py-2 border font-medium">
+                          {p.name}
+                        </td>
                         <td className="px-4 py-2 border">{p.arrivalTime}</td>
                         <td className="px-4 py-2 border">{p.burstTime}</td>
                         <td className="px-4 py-2 border">{p.waitingTime}</td>
@@ -314,7 +324,9 @@ export default function Home() {
                   </p>
                 </div>
                 <div className="p-4 border rounded-lg shadow bg-slate-50 text-center">
-                  <h3 className="text-lg font-semibold">Total Turnaround Time</h3>
+                  <h3 className="text-lg font-semibold">
+                    Total Turnaround Time
+                  </h3>
                   <p className="text-xl font-bold">{turnAroundTime}</p>
                   <p className="text-sm text-slate-500">
                     Average: {averageTurnAroundTime?.toFixed(2)}
