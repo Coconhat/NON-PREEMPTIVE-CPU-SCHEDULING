@@ -25,10 +25,6 @@ export function InputForm({ onSubmit }: { onSubmit: (num: number) => void }) {
     onSubmit(num);
   }
 
-  function handleReset() {
-    setNumberOfProcesses(0);
-  }
-
   return (
     <form onSubmit={handleSubmit}>
       <div className="flex justify-center mt-10">
